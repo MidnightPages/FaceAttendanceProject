@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Điểm danh khuôn mặt</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Điểm danh khuôn mặt</h1>
+
+        <div class="camera-section">
+            <div class="preview-box" id="previewBox">
+                <span id="previewPlaceholder">Chưa có ảnh</span>
+                <video id="cameraStream" autoplay playsinline muted style="display:none;"></video>
+                <img id="previewImage" style="display:none;">
+            </div>
+            <canvas id="captureCanvas" hidden></canvas>
+
+            <button id="openCameraBtn" class="btn btn-secondary" type="button">Mở camera</button>
+            <button id="captureBtn" class="btn btn-primary" type="button" style="display:none;">Chụp ảnh</button>
+
+            <button id="scanBtn" class="btn btn-primary">Quét khuôn mặt</button>
+        </div>
+
+        <div id="resultBox" class="result-box" style="display:none;">
+            <h2>Kết quả</h2>
+            <p><strong>Mã sinh viên:</strong> <span id="resMaSV">-</span></p>
+            <p><strong>Họ tên:</strong> <span id="resHoTen">-</span></p>
+            <p><strong>Lớp:</strong> <span id="resLop">-</span></p>
+            <p><strong>Trạng thái:</strong> <span id="resTrangThai">-</span></p>
+        </div>
+
+        <div class="history-section">
+            <div class="history-header">
+                <h2>Lịch sử điểm danh</h2>
+                <button id="clearHistoryBtn" class="btn-clear">Xóa tất cả</button>
+            </div>
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Mã SV</th>
+                        <th>Họ tên</th>
+                        <th>Lớp</th>
+                        <th>Thời gian</th>
+                        <th>Trạng thái</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td colspan="6">Đang tải...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<script>
+    const previewImage = document.getElementById("previewImage");
+    const previewPlaceholder = document.getElementById("previewPlaceholder");
+    const cameraStream = document.getElementById("cameraStream");
+    const captureCanvas = document.getElementById("captureCanvas");
+    const openCameraBtn = document.getElementById("openCameraBtn");
+    const captureBtn = document.getElementById("captureBtn");
+    const scanBtn = document.getElementById("scanBtn");
+    const resultBox = document.getElementById("resultBox");
+    const resMaSV = document.getElementById("resMaSV");
+    const resHoTen = document.getElementById("resHoTen");
+    const resLop = document.getElementById("resLop");
+    const resTrangThai = document.getElementById("resTrangThai");
+    const historyBody = document.getElementById("historyBody");
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+
+    let mediaStream = null;
+
+    // ---- Mở camera trực tiếp trong trang (cần HTTPS hoặc localhost) ----
+    async function openCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Trình duyệt này không hỗ trợ mở camera trực tiếp.");
+            return;
+        }
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "user" },
+                audio: false,
+            });
+            cameraStream.srcObject = mediaStream;
+            cameraStream.style.display = "block";
+            previewImage.style.display = "none";
+            previewPlaceholder.style.display = "none";
+
+            openCameraBtn.style.display = "none";
+            captureBtn.style.display = "inline-block";
+        } catch (err) {
+            alert(
+                "Không mở được camera (" + err.message + ").\n" +
+                "Lưu ý: camera trực tiếp chỉ hoạt động trên HTTPS hoặc localhost. " +
+                "Nếu đang truy cập qua http://<ip-lan>:5000 từ điện thoại, trình duyệt sẽ chặn quyền camera."
+            );
+        }
+    }
+
+    function capturePhoto() {
+        const w = cameraStream.videoWidth;
+        const h = cameraStream.videoHeight;
+        captureCanvas.width = w;
+        captureCanvas.height = h;
+        captureCanvas.getContext("2d").drawImage(cameraStream, 0, 0, w, h);
+
+        previewImage.src = captureCanvas.toDataURL("image/jpeg", 0.9);
+        previewImage.style.display = "block";
+        previewPlaceholder.style.display = "none";
+
+        stopCamera();
+    }
+
+    function stopCamera() {
+        if (mediaStream) {
+            mediaStream.getTracks().forEach((track) => track.stop());
+            mediaStream = null;
+        }
+        cameraStream.style.display = "none";
+        captureBtn.style.display = "none";
+        openCameraBtn.style.display = "inline-block";
+    }
+
+    openCameraBtn.addEventListener("click", openCamera);
+    captureBtn.addEventListener("click", capturePhoto);
+
+    scanBtn.addEventListener("click", async () => {
+        scanBtn.disabled = true;
+        scanBtn.textContent = "Đang quét...";
+
+        try {
+            const res = await fetch("/api/scan", { method: "POST" });
+            const data = await res.json();
+
+            if (!data.success) {
+                alert("Lỗi: " + data.error);
+                return;
+            }
+
+            resultBox.style.display = "block";
+            resMaSV.textContent = data.ma_sinh_vien || "Không xác định";
+            resHoTen.textContent = data.ho_ten || "-";
+            resLop.textContent = data.lop || "-";
+            resTrangThai.textContent = data.trang_thai;
+
+            resultBox.className = "result-box " + (data.ma_sinh_vien ? "result-ok" : "result-unknown");
+
+            loadHistory();
+        } catch (err) {
+            alert("Không kết nối được tới server: " + err);
+        } finally {
+            scanBtn.disabled = false;
+            scanBtn.textContent = "Quét khuôn mặt";
+        }
+    });
+
+    async function loadHistory() {
+        try {
+            const res = await fetch("/api/history");
+            const data = await res.json();
+
+            if (!data.success || data.history.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="6">Chưa có dữ liệu điểm danh</td></tr>';
+                return;
+            }
+
+            historyBody.innerHTML = data.history.map(row => `
+                <tr data-id="${row.ma_diem_danh}">
+                    <td>${row.ma_sinh_vien}</td>
+                    <td>${row.ho_ten || "-"}</td>
+                    <td>${row.lop || "-"}</td>
+                    <td>${row.thoi_gian || "-"}</td>
+                    <td>${row.trang_thai}</td>
+                    <td><button class="row-delete" title="Xóa bản ghi này">×</button></td>
+                </tr>
+            `).join("");
+
+            historyBody.querySelectorAll(".row-delete").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const tr = btn.closest("tr");
+                    deleteRecord(tr.dataset.id, tr);
+                });
+            });
+        } catch (err) {
+            historyBody.innerHTML = '<tr><td colspan="6">Không tải được lịch sử</td></tr>';
+        }
+    }
+
+    async function deleteRecord(id, row) {
+        if (!confirm("Xóa bản ghi điểm danh này?")) return;
+        try {
+            const res = await fetch(`/api/history/${id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (data.success) {
+                row.remove();
+                if (historyBody.children.length === 0) {
+                    historyBody.innerHTML = '<tr><td colspan="6">Chưa có dữ liệu điểm danh</td></tr>';
+                }
+            } else {
+                alert("Không tìm thấy bản ghi này (có thể đã bị xóa trước đó).");
+            }
+        } catch (err) {
+            alert("Không xóa được bản ghi này: " + err);
+        }
+    }
+
+    clearHistoryBtn.addEventListener("click", async () => {
+        if (!confirm("Xóa toàn bộ lịch sử điểm danh? Không thể hoàn tác.")) return;
+        try {
+            const res = await fetch("/api/history", { method: "DELETE" });
+            const data = await res.json();
+            if (data.success) {
+                loadHistory();
+            } else {
+                alert("Không xóa được lịch sử.");
+            }
+        } catch (err) {
+            alert("Không xóa được lịch sử: " + err);
+        }
+    });
+
+    // Tải lịch sử ngay khi mở trang
+    loadHistory();
+</script>
+</body>
+</html>
