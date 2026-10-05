@@ -1,66 +1,143 @@
 // matcher_tb.v
-// Testbench cho matcher.v, dung theo huong File I/O + subprocess:
-//   - Doc Face Feature da luong tu hoa tu input.txt (do generate.py ghi ra)
-//   - Dua vao module matcher de so khop
-//   - Ghi ket qua ("SV001"/"SV002"/"SV003"/"UNKNOWN") ra output.txt
-//     (de app.py doc lai sau khi chay xong mo phong)
+// Testbench cho matcher.v (phien ban ho tro N sinh vien dong).
+//
+//   - Doc input.txt     : Face Feature can nhan dien (do generate.py ghi ra)
+//   - Doc registered.txt: TOAN BO danh sach sinh vien da dang ky, do generate.py
+//                         ghi ra tu CSDL truoc moi lan quet (dong - khong con
+//                         hard-code trong Verilog nhu ban truoc)
+//   - Nap ca 2 vao module matcher, lay chi so sinh vien khop (hoac UNKNOWN)
+//   - Tra chi so do ve ma sinh vien dang chuoi, ghi ket qua ra output.txt
 //
 // Chay bang Icarus Verilog:
 //   iverilog -o sim.out matcher_tb.v matcher.v
 //   vvp sim.out
+//
+// Dinh dang registered.txt (do generate.py ghi):
+//   <so luong sinh vien>
+//   <MaSinhVien> <f0> <f1> <f2> <f3>
+//   ... (lap lai cho moi sinh vien)
 
 `timescale 1ns/1ps
 
 module matcher_tb;
 
-    reg signed [15:0] feature0, feature1, feature2, feature3;
-    wire [1:0] student_index;
-    wire       match_valid;
+    localparam MAX_STUDENTS = 16;
+    localparam FW           = 16;
 
-    integer in_file, out_file, scan_count;
+    reg signed [FW-1:0] feature0, feature1, feature2, feature3;
 
-    // Khoi tao module can kiem thu
-    matcher uut (
+    reg  [63:0] student_codes [0:MAX_STUDENTS-1];      // ma SV dang chuoi ASCII (vd "SV001")
+    reg  signed [FW-1:0] reg_feat [0:MAX_STUDENTS-1][0:3];
+    reg  signed [FW*4*MAX_STUDENTS-1:0] reg_features_flat;
+    reg  [31:0] num_registered;
+
+    wire [31:0] matched_index;
+    wire        match_valid;
+
+    integer in_file, reg_file, out_file;
+    integer scan_count, i, j;
+
+    // Bien tam de doc tung dong cua registered.txt. Khong doc truc tiep vao
+    // reg_feat[i][k] (mang 2 chieu voi chi so i dong) vi $fscanf cua Icarus
+    // Verilog khong chap nhan phan tu mang 2 chieu lam tham so dau ra truc tiep
+    // (loi "vpiConstant is not assignable") - phai doc qua bien 1 chieu roi gan
+    // lai thu cong.
+    reg signed [FW-1:0] tmp_f0, tmp_f1, tmp_f2, tmp_f3;
+
+    matcher #(
+        .MAX_STUDENTS(MAX_STUDENTS),
+        .FW(FW)
+    ) uut (
         .feature0(feature0),
         .feature1(feature1),
         .feature2(feature2),
         .feature3(feature3),
-        .student_index(student_index),
+        .reg_features_flat(reg_features_flat),
+        .num_registered(num_registered),
+        .matched_index(matched_index),
         .match_valid(match_valid)
     );
 
     initial begin
-        // Bước 1: đọc Face Feature từ input.txt
+        // ---- Doc input.txt: Face Feature can nhan dien ----
         in_file = $fopen("input.txt", "r");
         if (in_file == 0) begin
             $display("Loi: khong mo duoc input.txt");
             $finish;
         end
-
         scan_count = $fscanf(in_file, "%d %d %d %d", feature0, feature1, feature2, feature3);
         $fclose(in_file);
-
         if (scan_count != 4) begin
-            $display("Loi: input.txt sai dinh dang (can dung 4 so nguyen cach nhau boi dau cach)");
+            $display("Loi: input.txt sai dinh dang (can 4 so nguyen)");
             $finish;
         end
 
-        // Bước 2: chờ mạch tổ hợp trong matcher.v ổn định giá trị đầu ra
+        // ---- Doc registered.txt: danh sach sinh vien da dang ky (dong) ----
+        reg_file = $fopen("registered.txt", "r");
+        if (reg_file == 0) begin
+            $display("Loi: khong mo duoc registered.txt");
+            $finish;
+        end
+
+        scan_count = $fscanf(reg_file, "%d\n", num_registered);
+        if (scan_count != 1) begin
+            $display("Loi: registered.txt sai dinh dang (dong dau phai la so luong sinh vien)");
+            $finish;
+        end
+        if (num_registered > MAX_STUDENTS) begin
+            $display("Canh bao: registered.txt co %0d sinh vien, vuot MAX_STUDENTS=%0d, chi lay %0d dau tien",
+                      num_registered, MAX_STUDENTS, MAX_STUDENTS);
+            num_registered = MAX_STUDENTS;
+        end
+
+        for (i = 0; i < num_registered; i = i + 1) begin
+            scan_count = $fscanf(reg_file, "%s %d %d %d %d\n",
+                student_codes[i], tmp_f0, tmp_f1, tmp_f2, tmp_f3);
+            if (scan_count != 5) begin
+                $display("Loi: registered.txt sai dinh dang o dong sinh vien thu %0d", i + 1);
+                $finish;
+            end
+            reg_feat[i][0] = tmp_f0;
+            reg_feat[i][1] = tmp_f1;
+            reg_feat[i][2] = tmp_f2;
+            reg_feat[i][3] = tmp_f3;
+        end
+        $fclose(reg_file);
+
+        // ---- Lam phang mang 2 chieu thanh 1 vector de dua vao cong module ----
+        for (j = 0; j < MAX_STUDENTS; j = j + 1) begin
+            if (j < num_registered) begin
+                reg_features_flat[(j*4+0)*FW +: FW] = reg_feat[j][0];
+                reg_features_flat[(j*4+1)*FW +: FW] = reg_feat[j][1];
+                reg_features_flat[(j*4+2)*FW +: FW] = reg_feat[j][2];
+                reg_features_flat[(j*4+3)*FW +: FW] = reg_feat[j][3];
+            end else begin
+                reg_features_flat[(j*4+0)*FW +: FW] = {FW{1'b0}};
+                reg_features_flat[(j*4+1)*FW +: FW] = {FW{1'b0}};
+                reg_features_flat[(j*4+2)*FW +: FW] = {FW{1'b0}};
+                reg_features_flat[(j*4+3)*FW +: FW] = {FW{1'b0}};
+            end
+        end
+
+        // ---- Cho mach to hop trong matcher.v on dinh gia tri dau ra ----
         #10;
 
-        // Bước 3: ghi kết quả ra output.txt để app.py đọc lại
+        // ---- Ghi ket qua ra output.txt ----
         out_file = $fopen("output.txt", "w");
-        case (student_index)
-            2'd0: $fwrite(out_file, "SV001");
-            2'd1: $fwrite(out_file, "SV002");
-            2'd2: $fwrite(out_file, "SV003");
-            default: $fwrite(out_file, "UNKNOWN");
-        endcase
+        if (match_valid) begin
+            $fwrite(out_file, "%0s", student_codes[matched_index]);
+        end else begin
+            $fwrite(out_file, "UNKNOWN");
+        end
         $fclose(out_file);
 
-        // In ra console để tiện debug khi chạy tay (không ảnh hưởng output.txt)
+        // In ra console de debug khi chay tay (khong anh huong output.txt)
+        $display("So sinh vien da dang ky: %0d", num_registered);
         $display("Feature vao : %d %d %d %d", feature0, feature1, feature2, feature3);
-        $display("Ket qua     : %s", match_valid ? "MATCH" : "UNKNOWN");
+        if (match_valid)
+            $display("Ket qua     : %0s (chi so %0d)", student_codes[matched_index], matched_index);
+        else
+            $display("Ket qua     : UNKNOWN");
 
         $finish;
     end

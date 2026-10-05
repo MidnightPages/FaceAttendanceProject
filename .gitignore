@@ -5,4 +5,7 @@ __pycache__/
 # Verilog
 *.out
 *.sim
-*.txt
+output.txt
+input.txt
+registered.txt
+matcher_sim

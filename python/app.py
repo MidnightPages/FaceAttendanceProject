@@ -36,6 +36,7 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VERILOG_DIR = os.path.join(BASE_DIR, "..", "verilog")
 INPUT_FILE = os.path.join(VERILOG_DIR, "input.txt")
+REGISTERED_FILE = os.path.join(VERILOG_DIR, "registered.txt")
 OUTPUT_FILE = os.path.join(VERILOG_DIR, "output.txt")
 SIM_BINARY = "sim.out"
 
@@ -101,7 +102,7 @@ def api_scan():
     conn = get_db_connection()
     try:
         # Bước 1: sinh Face Feature giả lập (generate.py), ghi ra input.txt
-        generate.scan(input_path=INPUT_FILE, conn=conn)
+        generate.scan(input_path=INPUT_FILE, registered_path=REGISTERED_FILE, conn=conn)
 
         # Bước 2 + 3: chạy mô phỏng Verilog, lấy kết quả so khớp
         ma_sv = run_verilog_matching()

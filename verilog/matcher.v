@@ -1,81 +1,85 @@
 // matcher.v
-// Module Verilog thuc hien Face Feature Matching.
+// Module Verilog thuc hien Face Feature Matching cho N sinh vien da dang ky.
 //
-// Nguyen ly:
-//   - Nhan vao 4 gia tri Face Feature da luong tu hoa (so nguyen, x1000 so
-//     voi ban dau, xem generate.py) tu tin hieu quet.
-//   - Tinh khoang cach Manhattan (tong tri tuyet doi hieu tung phan tu)
-//     giua Face Feature dau vao va tung Face Feature da dang ky (SV001,
-//     SV002, SV003).
-//   - Sinh vien co khoang cach nho nhat VA nho hon THRESHOLD duoc coi la
-//     ket qua nhan dien. Neu khong sinh vien nao thoa -> UNKNOWN.
+// KHAC VOI BAN TRUOC: danh sach sinh vien KHONG con hard-code bang localparam co
+// dinh (3 sinh vien) ma duoc nap DONG tu ben ngoai qua cong reg_features_flat +
+// num_registered (do matcher_tb.v doc tu file registered.txt va truyen vao).
+// Nho vay them/bot sinh vien trong CSDL khong can sua lai matcher.v.
 //
-// Face Feature da dang ky duoc "nhung cung" (hard-code) trong module de mo
-// phong noi dung da luu trong DuLieuKhuonMat (database.sql), da nhan 1000:
-//   SV001 -> [120, -350, 870, 410]
-//   SV002 -> [540,  210, 730, 180]
-//   SV003 -> [310,  650,-240, 820]
+// MAX_STUDENTS: so luong sinh vien toi da ho tro cung luc (phai khop voi gia tri
+// dung trong matcher_tb.v va MAX_STUDENTS trong generate.py).
 
-module matcher (
-    input  wire signed [15:0] feature0,
-    input  wire signed [15:0] feature1,
-    input  wire signed [15:0] feature2,
-    input  wire signed [15:0] feature3,
-    output reg  [1:0]         student_index, // 0=SV001 1=SV002 2=SV003 3=UNKNOWN
-    output reg                match_valid     // 1 = tim thay, 0 = UNKNOWN
+module matcher #(
+    parameter MAX_STUDENTS = 16,
+    parameter FW           = 16   // do rong moi gia tri feature (bit)
+) (
+    input  wire signed [FW-1:0]                 feature0,
+    input  wire signed [FW-1:0]                 feature1,
+    input  wire signed [FW-1:0]                 feature2,
+    input  wire signed [FW-1:0]                 feature3,
+
+    // Danh sach Face Feature da dang ky, dang vector da "lam phang" (flatten):
+    // voi sinh vien thu i (0..MAX_STUDENTS-1), feature thu k (0..3) nam o vi tri
+    // bit [(i*4+k)*FW +: FW]. Cac vi tri i >= num_registered khong duoc dung toi.
+    input  wire signed [FW*4*MAX_STUDENTS-1:0]   reg_features_flat,
+    input  wire [31:0]                           num_registered, // so sinh vien dang dung (<= MAX_STUDENTS)
+
+    output reg  [31:0]                           matched_index,  // chi so sinh vien khop (0..MAX_STUDENTS-1)
+    output reg                                    match_valid     // 1 = tim thay, 0 = UNKNOWN
 );
 
-    // Nguong so khop (tong tri tuyet doi hieu). Sinh tu nhieu mo phong
-    // trong generate.py (NOISE_LEVEL = 0.03 * SCALE = 30) nen tong 4 chieu
-    // lech nhau toi da khoang 120; chon THRESHOLD du rong de chap nhan nhieu
-    // nhung du hep de loai nguoi la.
+    // Nguong so khop (tong tri tuyet doi hieu). Xem giai thich chon gia tri nay
+    // trong generate.py (NOISE_LEVEL).
     localparam integer THRESHOLD = 200;
 
-    // Face Feature da dang ky (da luong tu hoa x1000)
-    localparam signed [15:0] SV001_F0 = 16'sd120,  SV001_F1 = -16'sd350;
-    localparam signed [15:0] SV001_F2 = 16'sd870,  SV001_F3 =  16'sd410;
-
-    localparam signed [15:0] SV002_F0 = 16'sd540,  SV002_F1 =  16'sd210;
-    localparam signed [15:0] SV002_F2 = 16'sd730,  SV002_F3 =  16'sd180;
-
-    localparam signed [15:0] SV003_F0 = 16'sd310,  SV003_F1 =  16'sd650;
-    localparam signed [15:0] SV003_F2 = -16'sd240, SV003_F3 =  16'sd820;
-
-    // Ham tinh tri tuyet doi cua hieu 2 so co dau
-    function signed [16:0] abs_diff;
-        input signed [15:0] a;
-        input signed [15:0] b;
-        reg   signed [16:0] diff;
+    function signed [FW:0] abs_diff;
+        input signed [FW-1:0] a;
+        input signed [FW-1:0] b;
+        reg   signed [FW:0]   diff;
         begin
             diff = a - b;
             abs_diff = (diff < 0) ? -diff : diff;
         end
     endfunction
 
-    wire signed [18:0] dist_sv001, dist_sv002, dist_sv003;
+    // Lay feature thu feature_idx (0..3) cua sinh vien thu student_idx tu vector
+    // da lam phang.
+    function signed [FW-1:0] get_feature;
+        input integer student_idx;
+        input integer feature_idx;
+        begin
+            get_feature = reg_features_flat[(student_idx*4 + feature_idx)*FW +: FW];
+        end
+    endfunction
 
-    assign dist_sv001 = abs_diff(feature0, SV001_F0) + abs_diff(feature1, SV001_F1)
-                       + abs_diff(feature2, SV001_F2) + abs_diff(feature3, SV001_F3);
+    integer i;
+    integer dist;
+    integer best_dist;
 
-    assign dist_sv002 = abs_diff(feature0, SV002_F0) + abs_diff(feature1, SV002_F1)
-                       + abs_diff(feature2, SV002_F2) + abs_diff(feature3, SV002_F3);
-
-    assign dist_sv003 = abs_diff(feature0, SV003_F0) + abs_diff(feature1, SV003_F1)
-                       + abs_diff(feature2, SV003_F2) + abs_diff(feature3, SV003_F3);
-
-    // Chon khoang cach nho nhat, so voi THRESHOLD de quyet dinh ket qua
+    // Vong lap so khop voi tung sinh vien dang ky (i < num_registered), chon
+    // khoang cach nho nhat. MAX_STUDENTS la hang so bien dich (parameter) nen
+    // vong lap duoc "unroll" khi tong hop/mo phong - van la logic to hop binh
+    // thuong, khong phai phan mem.
     always @* begin
-        if (dist_sv001 <= dist_sv002 && dist_sv001 <= dist_sv003 && dist_sv001 <= THRESHOLD) begin
-            student_index = 2'd0;
-            match_valid   = 1'b1;
-        end else if (dist_sv002 <= dist_sv001 && dist_sv002 <= dist_sv003 && dist_sv002 <= THRESHOLD) begin
-            student_index = 2'd1;
-            match_valid   = 1'b1;
-        end else if (dist_sv003 <= dist_sv001 && dist_sv003 <= dist_sv002 && dist_sv003 <= THRESHOLD) begin
-            student_index = 2'd2;
-            match_valid   = 1'b1;
+        best_dist     = 32'sh7FFFFFFF; // gia tri "vo cuc" ban dau
+        matched_index = MAX_STUDENTS;  // sentinel = chua tim thay ai
+        match_valid   = 1'b0;
+
+        for (i = 0; i < MAX_STUDENTS; i = i + 1) begin
+            if (i < num_registered) begin
+                dist = abs_diff(feature0, get_feature(i, 0)) + abs_diff(feature1, get_feature(i, 1))
+                     + abs_diff(feature2, get_feature(i, 2)) + abs_diff(feature3, get_feature(i, 3));
+                if (dist < best_dist) begin
+                    best_dist     = dist;
+                    matched_index = i;
+                end
+            end
+        end
+
+        if (matched_index != MAX_STUDENTS && best_dist <= THRESHOLD) begin
+            match_valid = 1'b1;
         end else begin
-            student_index = 2'd3; // UNKNOWN
+            matched_index = MAX_STUDENTS; // UNKNOWN
             match_valid   = 1'b0;
         end
     end

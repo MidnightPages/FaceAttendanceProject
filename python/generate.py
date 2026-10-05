@@ -44,6 +44,11 @@ FALLBACK_FEATURES = {
     "SV003": [0.31, 0.65, -0.24, 0.82],
 }
 
+# Số sinh viên tối đa matcher.v hỗ trợ cùng lúc - PHẢI khớp với MAX_STUDENTS
+# trong matcher.v / matcher_tb.v. Nếu CSDL có nhiều hơn số này, chỉ N sinh viên
+# đầu tiên được ghi vào registered.txt (có cảnh báo in ra).
+MAX_STUDENTS = 16
+
 # Hệ số lượng tử hóa: chuyển số thực sang số nguyên cho Verilog
 SCALE = 1000
 
@@ -113,6 +118,39 @@ def load_registered_features(conn=None):
             conn.close()
 
 
+def write_registered_features(features, path="registered.txt", scale=SCALE):
+    """
+    Ghi TOÀN BỘ danh sách sinh viên đã đăng ký ra file, để matcher_tb.v nạp vào
+    matcher.v mỗi lần mô phỏng. matcher.v giờ đọc số lượng sinh viên ĐỘNG từ file
+    này qua matcher_tb.v (không còn hard-code cố định 3 sinh viên như bản trước).
+
+    Định dạng file (khớp với $fscanf trong matcher_tb.v):
+        <số lượng sinh viên>
+        <MaSinhVien> <f0> <f1> <f2> <f3>
+        ... (lặp lại cho mỗi sinh viên)
+
+    Trả về số sinh viên thực tế đã ghi (có thể nhỏ hơn len(features) nếu vượt
+    MAX_STUDENTS).
+    """
+    items = list(features.items())
+    if len(items) > MAX_STUDENTS:
+        print(
+            f"[generate.py] Cảnh báo: có {len(items)} sinh viên, vượt MAX_STUDENTS="
+            f"{MAX_STUDENTS} của matcher.v, chỉ ghi {MAX_STUDENTS} sinh viên đầu tiên"
+        )
+        items = items[:MAX_STUDENTS]
+
+    lines = [str(len(items))]
+    for ma_sv, feat in items:
+        q = quantize(feat, scale)
+        lines.append(f"{ma_sv} " + " ".join(str(v) for v in q))
+
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+    return len(items)
+
+
 def _add_noise(feature, noise_level=NOISE_LEVEL):
     """Thêm nhiễu ngẫu nhiên nhỏ vào Face Feature gốc của sinh viên đã đăng ký."""
     return [round(x + random.uniform(-noise_level, noise_level), 4) for x in feature]
@@ -154,14 +192,28 @@ def write_feature_to_file(feature, path="input.txt"):
     return quantized
 
 
-def scan(known_probability=0.75, input_path="input.txt", conn=None):
+def scan(known_probability=0.75, input_path="input.txt", registered_path="registered.txt", conn=None):
     """
     Hàm chính được app.py gọi khi nhận tín hiệu SCAN từ điện thoại.
+
+    Ghi ra 2 file để matcher_tb.v đọc:
+      - input_path      : Face Feature cần nhận diện (1 sinh viên hoặc người lạ)
+      - registered_path : TOÀN BỘ danh sách sinh viên đã đăng ký (để matcher.v so
+                           khớp động, xem write_registered_features())
 
     conn: kết nối PostgreSQL dùng chung cho cả request (do app.py mở),
           xem load_registered_features(). Nếu không truyền, tự mở/đóng riêng.
     """
-    ma_sv_mo_phong, feature = generate_feature(known_probability, conn=conn)
+    registered = load_registered_features(conn=conn)
+    num_registered = write_registered_features(registered, registered_path)
+
+    if registered and random.random() < known_probability:
+        ma_sv_mo_phong = random.choice(list(registered.keys()))
+        feature = _add_noise(registered[ma_sv_mo_phong])
+    else:
+        ma_sv_mo_phong = "UNKNOWN"
+        feature = _random_unknown_feature()
+
     quantized = write_feature_to_file(feature, input_path)
 
     return {
@@ -169,15 +221,19 @@ def scan(known_probability=0.75, input_path="input.txt", conn=None):
         "feature": feature,
         "feature_quantized": quantized,
         "input_path": input_path,
+        "registered_path": registered_path,
+        "num_registered": num_registered,
     }
 
 
 if __name__ == "__main__":
     path = sys.argv[1] if len(sys.argv) > 1 else "input.txt"
-    result = scan(input_path=path)
+    reg_path = sys.argv[2] if len(sys.argv) > 2 else "registered.txt"
+    result = scan(input_path=path, registered_path=reg_path)
 
     print("Face Feature giả lập đã được sinh:")
     print(f"  (Mô phỏng theo: {result['ma_sv_mo_phong']})")
     print(f"  Feature gốc          : {result['feature']}")
     print(f"  Feature lượng tử hóa : {result['feature_quantized']}")
     print(f"  Đã ghi vào file      : {result['input_path']}")
+    print(f"  Số sinh viên đã đăng ký: {result['num_registered']} (ghi vào {result['registered_path']})")
