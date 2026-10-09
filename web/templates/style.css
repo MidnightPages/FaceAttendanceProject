@@ -55,9 +55,9 @@ h2 {
 }
 
 /* Camera trước hiển thị như soi gương, trực quan hơn khi tự chụp */
-.preview-box video {
+/* .preview-box video {
     transform: scaleX(-1);
-}
+} */
 
 .btn {
     display: inline-block;

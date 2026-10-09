@@ -21,7 +21,7 @@ import datetime
 
 from flask import Flask, render_template, jsonify
 
-import generate  # generate.py cùng thư mục python/
+import generate  
 
 try:
     import psycopg2
@@ -41,8 +41,7 @@ OUTPUT_FILE = os.path.join(VERILOG_DIR, "output.txt")
 SIM_BINARY = "sim.out"
 
 # ----------------------------------------------------------------------------
-# CẤU HÌNH POSTGRESQL — SỬA LẠI CHO ĐÚNG MÔI TRƯỜNG CỦA BẠN
-# (giữ giống generate.py để cả 2 cùng trỏ vào 1 CSDL)
+# CẤU HÌNH POSTGRESQL
 # ----------------------------------------------------------------------------
 DB_CONFIG = {
     "host": "localhost",
@@ -67,7 +66,7 @@ def get_db_connection():
             password=DB_CONFIG["password"],
             connect_timeout=3,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  
         print(f"[PostgreSQL] Không kết nối được CSDL: {exc}")
         return None
 
@@ -96,9 +95,7 @@ def api_scan():
     Thực hiện toàn bộ pipeline: sinh Face Feature -> so khớp Verilog
     -> truy vấn CSDL -> lưu điểm danh -> trả kết quả cho giao diện web.
     """
-    # Mở 1 kết nối PostgreSQL dùng chung cho cả request, thay vì để
-    # generate.scan() / get_student_info() / save_attendance() mỗi hàm
-    # tự mở một kết nối riêng (tối ưu số lượng kết nối mở ra mỗi lượt quét).
+ 
     conn = get_db_connection()
     try:
         # Bước 1: sinh Face Feature giả lập (generate.py), ghi ra input.txt
@@ -133,7 +130,7 @@ def api_scan():
 
     except subprocess.CalledProcessError as exc:
         return jsonify({"success": False, "error": f"Lỗi mô phỏng Verilog: {exc}"}), 500
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  
         return jsonify({"success": False, "error": str(exc)}), 500
     finally:
         if conn is not None:
@@ -166,11 +163,7 @@ def run_verilog_matching():
 
 
 def get_student_info(ma_sv, conn=None):
-    """Truy vấn PostgreSQL lấy thông tin sinh viên theo mã sinh viên.
-
-    conn: kết nối dùng chung cho cả request (xem api_scan). Nếu không
-          truyền vào, hàm tự mở/đóng kết nối riêng như khi gọi độc lập.
-    """
+    """Truy vấn PostgreSQL lấy thông tin sinh viên theo mã sinh viên"""
     own_conn = conn is None
     if own_conn:
         conn = get_db_connection()
@@ -192,11 +185,7 @@ def get_student_info(ma_sv, conn=None):
 
 
 def save_attendance(ma_sv, trang_thai, conn=None):
-    """Lưu một bản ghi điểm danh mới vào bảng LichSuDiemDanh.
-
-    conn: kết nối dùng chung cho cả request (xem api_scan). Nếu không
-          truyền vào, hàm tự mở/đóng kết nối riêng như khi gọi độc lập.
-    """
+    """Lưu một bản ghi điểm danh mới vào bảng LichSuDiemDanh"""
     own_conn = conn is None
     if own_conn:
         conn = get_db_connection()
@@ -217,8 +206,7 @@ def save_attendance(ma_sv, trang_thai, conn=None):
 
 
 def get_attendance_history(limit=50):
-    """Lấy danh sách các lượt điểm danh gần nhất, kèm thông tin sinh viên
-    (join với bảng SinhVien), để hiển thị lịch sử trên giao diện web."""
+    """Lấy danh sách các lượt điểm danh gần nhất, kèm thông tin sinh viên"""
     conn = get_db_connection()
     if conn is None:
         return []
@@ -252,11 +240,7 @@ def get_attendance_history(limit=50):
 
 
 def clear_attendance_history(conn=None):
-    """Xóa toàn bộ lịch sử điểm danh. Trả về số bản ghi đã xóa.
-
-    conn: kết nối dùng chung, xem get_student_info(). Nếu không truyền vào,
-          hàm tự mở/đóng kết nối riêng.
-    """
+    """Xóa toàn bộ lịch sử điểm danh. Trả về số bản ghi đã xóa"""
     own_conn = conn is None
     if own_conn:
         conn = get_db_connection()
@@ -276,8 +260,7 @@ def clear_attendance_history(conn=None):
 
 def delete_attendance_record(ma_diem_danh, conn=None):
     """Xóa một bản ghi điểm danh cụ thể theo MaDiemDanh.
-    Trả về True nếu xóa được (tìm thấy bản ghi), False nếu không.
-    """
+    Trả về True nếu xóa được (tìm thấy bản ghi), False nếu không"""
     own_conn = conn is None
     if own_conn:
         conn = get_db_connection()
@@ -319,15 +302,5 @@ def api_history_delete_one(ma_diem_danh):
 
 
 if __name__ == "__main__":
-    # host="0.0.0.0" để điện thoại trong cùng mạng LAN có thể truy cập vào web server
-    #
-    # ssl_context="adhoc": Flask tự tạo chứng chỉ HTTPS tự ký (self-signed) mỗi lần chạy.
-    # Cần thiết vì trình duyệt điện thoại chỉ cho phép mở camera (getUserMedia) qua HTTPS
-    # hoặc localhost. Dùng cách này thì server VẪN CHỈ nằm trong mạng LAN như cũ
-    # (khác với ngrok là mở ra Internet công khai) - điện thoại vẫn phải cùng Wi-Fi mới
-    # truy cập được https://<ip-lan>:5000.
-    #
-    # Cần cài: pip install pyopenssl
-    # Trình duyệt sẽ cảnh báo "Không an toàn" vì chứng chỉ tự ký - bấm "Nâng cao" ->
-    # "Tiếp tục truy cập" để bỏ qua, không ảnh hưởng chức năng.
+
     app.run(host="0.0.0.0", port=5000, debug=True, ssl_context="adhoc")

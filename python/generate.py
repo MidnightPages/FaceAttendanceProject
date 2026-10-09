@@ -9,10 +9,6 @@ khớp với database.sql). Nếu không kết nối được CSDL, dùng bộ d
 dự phòng (FALLBACK_FEATURES) để hệ thống vẫn chạy được ở chế độ demo.
 
 CSDL: PostgreSQL (dùng thư viện psycopg2).
-
-Cách dùng:
-- Import và gọi scan() từ app.py khi nhận tín hiệu SCAN
-- Hoặc chạy độc lập: python generate.py [đường_dẫn_input.txt]
 """
 
 import random
@@ -26,15 +22,14 @@ except ImportError:
 
 
 # ----------------------------------------------------------------------------
-# CẤU HÌNH POSTGRESQL — SỬA LẠI CHO ĐÚNG MÔI TRƯỜNG CỦA BẠN
-# (giữ giống app.py để cả 2 cùng trỏ vào 1 CSDL)
+# CẤU HÌNH POSTGRESQL
 # ----------------------------------------------------------------------------
 DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
     "dbname": "diem_danh",
     "user": "postgres",
-    "password": "your_password",
+    "password": "thuynga",
 }
 
 # Dữ liệu dự phòng, CHỈ dùng khi không kết nối được CSDL (demo/offline)
@@ -44,15 +39,13 @@ FALLBACK_FEATURES = {
     "SV003": [0.31, 0.65, -0.24, 0.82],
 }
 
-# Số sinh viên tối đa matcher.v hỗ trợ cùng lúc - PHẢI khớp với MAX_STUDENTS
-# trong matcher.v / matcher_tb.v. Nếu CSDL có nhiều hơn số này, chỉ N sinh viên
-# đầu tiên được ghi vào registered.txt (có cảnh báo in ra).
+# Số sinh viên tối đa matcher.v hỗ trợ cùng lúc
 MAX_STUDENTS = 16
 
 # Hệ số lượng tử hóa: chuyển số thực sang số nguyên cho Verilog
 SCALE = 1000
 
-# Biên độ nhiễu ngẫu nhiên khi mô phỏng "quét lại" một sinh viên đã đăng ký
+# Biên độ nhiễu ngẫu nhiên khi mô phỏng một sinh viên đã đăng ký
 NOISE_LEVEL = 0.03
 
 
@@ -79,10 +72,6 @@ def load_registered_features(conn=None):
     """
     Đọc Face Feature đã đăng ký từ bảng DuLieuKhuonMat.
     Trả về dict {MaSinhVien: [f0, f1, f2, f3]}.
-
-    conn: kết nối PostgreSQL dùng chung (do app.py mở và truyền vào) để tránh
-          mở thêm một kết nối riêng cho mỗi lượt quét. Nếu không truyền vào,
-          hàm tự mở và tự đóng kết nối như khi chạy độc lập.
 
     Nếu không đọc được từ CSDL (mất kết nối, bảng rỗng, dữ liệu lỗi định dạng),
     dùng FALLBACK_FEATURES để hệ thống vẫn hoạt động được ở chế độ demo.
@@ -122,15 +111,9 @@ def write_registered_features(features, path="registered.txt", scale=SCALE):
     """
     Ghi TOÀN BỘ danh sách sinh viên đã đăng ký ra file, để matcher_tb.v nạp vào
     matcher.v mỗi lần mô phỏng. matcher.v giờ đọc số lượng sinh viên ĐỘNG từ file
-    này qua matcher_tb.v (không còn hard-code cố định 3 sinh viên như bản trước).
+    này qua matcher_tb.v.
 
-    Định dạng file (khớp với $fscanf trong matcher_tb.v):
-        <số lượng sinh viên>
-        <MaSinhVien> <f0> <f1> <f2> <f3>
-        ... (lặp lại cho mỗi sinh viên)
-
-    Trả về số sinh viên thực tế đã ghi (có thể nhỏ hơn len(features) nếu vượt
-    MAX_STUDENTS).
+    Trả về số sinh viên thực tế đã ghi
     """
     items = list(features.items())
     if len(items) > MAX_STUDENTS:
@@ -166,8 +149,6 @@ def generate_feature(known_probability=0.75, conn=None):
     Sinh một Face Feature giả lập cho một lượt quét.
     Face Feature gốc của sinh viên đã đăng ký được lấy từ CSDL qua load_registered_features().
 
-    conn: kết nối PostgreSQL dùng chung, xem load_registered_features().
-
     Trả về: (ma_sv_mo_phong, feature)
     """
     registered = load_registered_features(conn=conn)
@@ -200,9 +181,6 @@ def scan(known_probability=0.75, input_path="input.txt", registered_path="regist
       - input_path      : Face Feature cần nhận diện (1 sinh viên hoặc người lạ)
       - registered_path : TOÀN BỘ danh sách sinh viên đã đăng ký (để matcher.v so
                            khớp động, xem write_registered_features())
-
-    conn: kết nối PostgreSQL dùng chung cho cả request (do app.py mở),
-          xem load_registered_features(). Nếu không truyền, tự mở/đóng riêng.
     """
     registered = load_registered_features(conn=conn)
     num_registered = write_registered_features(registered, registered_path)

@@ -1,13 +1,7 @@
 // matcher.v
 // Module Verilog thuc hien Face Feature Matching cho N sinh vien da dang ky.
-//
-// KHAC VOI BAN TRUOC: danh sach sinh vien KHONG con hard-code bang localparam co
-// dinh (3 sinh vien) ma duoc nap DONG tu ben ngoai qua cong reg_features_flat +
-// num_registered (do matcher_tb.v doc tu file registered.txt va truyen vao).
-// Nho vay them/bot sinh vien trong CSDL khong can sua lai matcher.v.
-//
-// MAX_STUDENTS: so luong sinh vien toi da ho tro cung luc (phai khop voi gia tri
-// dung trong matcher_tb.v va MAX_STUDENTS trong generate.py).
+
+// MAX_STUDENTS: so luong sinh vien toi da ho tro cung luc
 
 module matcher #(
     parameter MAX_STUDENTS = 16,
@@ -42,8 +36,6 @@ module matcher #(
         end
     endfunction
 
-    // Lay feature thu feature_idx (0..3) cua sinh vien thu student_idx tu vector
-    // da lam phang.
     function signed [FW-1:0] get_feature;
         input integer student_idx;
         input integer feature_idx;
@@ -56,13 +48,10 @@ module matcher #(
     integer dist;
     integer best_dist;
 
-    // Vong lap so khop voi tung sinh vien dang ky (i < num_registered), chon
-    // khoang cach nho nhat. MAX_STUDENTS la hang so bien dich (parameter) nen
-    // vong lap duoc "unroll" khi tong hop/mo phong - van la logic to hop binh
-    // thuong, khong phai phan mem.
+
     always @* begin
-        best_dist     = 32'sh7FFFFFFF; // gia tri "vo cuc" ban dau
-        matched_index = MAX_STUDENTS;  // sentinel = chua tim thay ai
+        best_dist     = 32'sh7FFFFFFF; 
+        matched_index = MAX_STUDENTS; 
         match_valid   = 1'b0;
 
         for (i = 0; i < MAX_STUDENTS; i = i + 1) begin
@@ -79,7 +68,7 @@ module matcher #(
         if (matched_index != MAX_STUDENTS && best_dist <= THRESHOLD) begin
             match_valid = 1'b1;
         end else begin
-            matched_index = MAX_STUDENTS; // UNKNOWN
+            matched_index = MAX_STUDENTS; 
             match_valid   = 1'b0;
         end
     end

@@ -1,21 +1,15 @@
 // matcher_tb.v
-// Testbench cho matcher.v (phien ban ho tro N sinh vien dong).
+// Testbench cho matcher.v
 //
 //   - Doc input.txt     : Face Feature can nhan dien (do generate.py ghi ra)
 //   - Doc registered.txt: TOAN BO danh sach sinh vien da dang ky, do generate.py
-//                         ghi ra tu CSDL truoc moi lan quet (dong - khong con
-//                         hard-code trong Verilog nhu ban truoc)
+//                         ghi ra tu CSDL truoc moi lan quet
 //   - Nap ca 2 vao module matcher, lay chi so sinh vien khop (hoac UNKNOWN)
 //   - Tra chi so do ve ma sinh vien dang chuoi, ghi ket qua ra output.txt
-//
-// Chay bang Icarus Verilog:
-//   iverilog -o sim.out matcher_tb.v matcher.v
-//   vvp sim.out
 //
 // Dinh dang registered.txt (do generate.py ghi):
 //   <so luong sinh vien>
 //   <MaSinhVien> <f0> <f1> <f2> <f3>
-//   ... (lap lai cho moi sinh vien)
 
 `timescale 1ns/1ps
 
@@ -26,7 +20,7 @@ module matcher_tb;
 
     reg signed [FW-1:0] feature0, feature1, feature2, feature3;
 
-    reg  [63:0] student_codes [0:MAX_STUDENTS-1];      // ma SV dang chuoi ASCII (vd "SV001")
+    reg  [63:0] student_codes [0:MAX_STUDENTS-1];   
     reg  signed [FW-1:0] reg_feat [0:MAX_STUDENTS-1][0:3];
     reg  signed [FW*4*MAX_STUDENTS-1:0] reg_features_flat;
     reg  [31:0] num_registered;
@@ -37,11 +31,6 @@ module matcher_tb;
     integer in_file, reg_file, out_file;
     integer scan_count, i, j;
 
-    // Bien tam de doc tung dong cua registered.txt. Khong doc truc tiep vao
-    // reg_feat[i][k] (mang 2 chieu voi chi so i dong) vi $fscanf cua Icarus
-    // Verilog khong chap nhan phan tu mang 2 chieu lam tham so dau ra truc tiep
-    // (loi "vpiConstant is not assignable") - phai doc qua bien 1 chieu roi gan
-    // lai thu cong.
     reg signed [FW-1:0] tmp_f0, tmp_f1, tmp_f2, tmp_f3;
 
     matcher #(
@@ -72,7 +61,7 @@ module matcher_tb;
             $finish;
         end
 
-        // ---- Doc registered.txt: danh sach sinh vien da dang ky (dong) ----
+        // ---- Doc registered.txt: danh sach sinh vien da dang ky ----
         reg_file = $fopen("registered.txt", "r");
         if (reg_file == 0) begin
             $display("Loi: khong mo duoc registered.txt");
@@ -131,7 +120,7 @@ module matcher_tb;
         end
         $fclose(out_file);
 
-        // In ra console de debug khi chay tay (khong anh huong output.txt)
+        // In ra console de debug 
         $display("So sinh vien da dang ky: %0d", num_registered);
         $display("Feature vao : %d %d %d %d", feature0, feature1, feature2, feature3);
         if (match_valid)
